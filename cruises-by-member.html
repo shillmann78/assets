@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Familien-Logbuch — Kreuzfahrt-Routenkarte</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --navy:#0E2235;
+  --navy-line:rgba(244,238,221,0.12);
+  --parchment:#F4EEDD;
+  --parchment-dim:#E7DFC8;
+  --ink:#1C2B36;
+  --ink-soft:#5B6B78;
+  --gold:#D2A23D;
+  --inactive:#4C6478;
+  --line-hair:rgba(28,43,54,0.12);
+  --radius:10px;
+  --sidebar-w:340px;
+  --font-display:'Fraunces',Georgia,serif;
+  --font-body:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  --font-mono:'JetBrains Mono','Courier New',monospace;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;font-family:var(--font-body);background:var(--navy);color:var(--ink);}
+.app{display:flex;flex-direction:column;height:100vh;}
+
+/* ── Topbar ── */
+.topbar{
+  display:flex;justify-content:space-between;align-items:center;gap:16px;
+  padding:13px 24px;background:var(--navy);color:var(--parchment);
+  border-bottom:1px solid var(--navy-line);flex-wrap:wrap;row-gap:8px;
+  position:relative;z-index:10;
+}
+.eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);display:block;}
+.topbar h1{font-family:var(--font-display);font-weight:600;font-size:19px;margin:2px 0 0;}
+.topbar-stats{font-family:var(--font-mono);font-size:12px;color:var(--parchment-dim);display:flex;align-items:center;gap:12px;}
+.ghost-btn{
+  background:transparent;border:1px solid rgba(244,238,221,.35);color:var(--parchment);
+  font-family:var(--font-body);font-size:12px;padding:6px 13px;border-radius:999px;
+  cursor:pointer;transition:background .15s;white-space:nowrap;
+}
+.ghost-btn:hover{background:rgba(244,238,221,.12);}
+.ghost-btn:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+
+/* ── Main layout ── */
+.main{flex:1;display:flex;min-height:0;position:relative;}
+
+/* ── Sidebar ── */
+.sidebar{
+  width:var(--sidebar-w);flex-shrink:0;background:var(--parchment);
+  display:flex;flex-direction:column;overflow:hidden;
+  border-right:1px solid rgba(0,0,0,.08);
+  transition:width .25s ease, opacity .2s ease;
+  position:relative;
+}
+.sidebar.collapsed{width:0;opacity:0;pointer-events:none;}
+.sidebar-inner{
+  width:var(--sidebar-w);flex-shrink:0;
+  display:flex;flex-direction:column;height:100%;overflow-y:auto;
+}
+
+/* ── Sidebar toggle button ── */
+.sidebar-toggle{
+  position:absolute;top:50%;transform:translateY(-50%);
+  left:calc(var(--sidebar-w) + 0px);
+  width:22px;height:52px;background:var(--parchment);
+  border:1px solid rgba(0,0,0,.1);border-left:none;
+  border-radius:0 8px 8px 0;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;z-index:600;transition:left .25s ease;
+  box-shadow:2px 0 6px rgba(0,0,0,.08);
+  color:var(--ink-soft);font-size:13px;
+  padding:0;user-select:none;
+}
+.sidebar-toggle:hover{background:var(--parchment-dim);}
+.sidebar-toggle:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+.sidebar.collapsed ~ .sidebar-toggle{left:0;}
+
+/* ── Sidebar sections ── */
+.sidebar-section{padding:14px 16px;}
+.sidebar-section h2{
+  font-family:var(--font-display);font-size:12px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--ink-soft);margin:0 0 10px;font-weight:600;
+}
+
+/* ── Person filter buttons ── */
+.person-filters{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:2px;}
+.person-btn{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 12px;border-radius:999px;border:1.5px solid var(--parchment-dim);
+  background:#fff;font-family:var(--font-body);font-size:12.5px;font-weight:500;
+  color:var(--ink);cursor:pointer;transition:all .15s;
+  white-space:nowrap;
+}
+.person-btn:hover{border-color:var(--gold);background:rgba(210,162,61,.08);}
+.person-btn.active{background:var(--gold);border-color:var(--gold);color:#fff;}
+.person-btn:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+.person-avatar{
+  width:20px;height:20px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:700;color:#fff;flex-shrink:0;
+}
+
+/* ── Route list ── */
+.route-sep{border:none;border-top:1px solid var(--line-hair);margin:4px 0 10px;}
+.route-group-label{
+  font-family:var(--font-mono);font-size:10px;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--ink-soft);margin:10px 0 3px;
+}
+.route-group-label:first-child{margin-top:0;}
+.route-row{
+  display:flex;align-items:center;gap:9px;padding:6px 7px;border-radius:8px;
+  cursor:pointer;transition:background .12s;
+}
+.route-row:hover{background:rgba(28,43,54,.05);}
+.route-row.active{background:rgba(210,162,61,.22);}
+.route-row input{accent-color:var(--gold);width:14px;height:14px;cursor:pointer;flex-shrink:0;}
+.route-row input:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+.route-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.route-text{display:flex;flex-direction:column;line-height:1.25;min-width:0;}
+.route-text .name{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.route-text .meta{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-soft);}
+
+/* ── Info cards ── */
+.info-section{border-top:1px solid var(--line-hair);flex:1;padding-bottom:20px;}
+.info-cards{display:flex;flex-direction:column;gap:10px;}
+.hint{font-size:12px;color:var(--ink-soft);line-height:1.55;}
+.info-card{
+  background:#fff;border:1px solid var(--line-hair);border-radius:var(--radius);
+  padding:10px 12px;position:relative;box-shadow:0 1px 2px rgba(0,0,0,.05);
+}
+.info-card .close{
+  position:absolute;top:5px;right:7px;border:none;background:none;
+  color:var(--ink-soft);font-size:16px;cursor:pointer;line-height:1;padding:4px;
+}
+.info-card .close:hover{color:var(--ink);}
+.info-card h3{font-family:var(--font-display);font-size:13.5px;margin:0 0 3px;padding-right:18px;font-weight:600;}
+.info-card .ship-line{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-soft);margin-bottom:5px;}
+.info-card .dates{font-family:var(--font-mono);font-size:11px;color:var(--ink);margin-bottom:3px;}
+.info-card .participants{font-size:11px;color:var(--ink-soft);margin-bottom:5px;}
+.info-card .stats{display:flex;gap:14px;font-family:var(--font-mono);font-size:11px;border-top:1px dashed var(--line-hair);padding-top:5px;color:var(--ink-soft);}
+.info-card .stats b{color:var(--ink);font-weight:600;}
+
+/* ── Map ── */
+.map-wrap{position:relative;flex:1;min-width:0;}
+#map{position:absolute;inset:0;background:var(--navy);}
+.leaflet-tooltip.port-tip{
+  font-family:var(--font-body);font-size:11.5px;background:var(--ink);color:var(--parchment);
+  border:none;box-shadow:0 2px 6px rgba(0,0,0,.3);
+}
+.leaflet-tooltip.port-tip:before{border-top-color:var(--ink);}
+
+/* ── Legend ── */
+.legend{
+  position:absolute;bottom:16px;left:16px;background:rgba(14,34,53,.88);
+  backdrop-filter:blur(4px);border:1px solid var(--navy-line);border-radius:10px;
+  padding:10px 14px;color:var(--parchment-dim);font-family:var(--font-mono);
+  font-size:11px;z-index:500;
+}
+.legend-row{display:flex;align-items:center;gap:8px;margin:3px 0;}
+.legend-row.muted{color:rgba(244,238,221,.5);}
+.dash{width:14px;height:2px;background:var(--inactive);display:inline-block;flex-shrink:0;}
+
+/* ── Mobile ── */
+@media (max-width:760px){
+  .main{flex-direction:column;}
+  :root{--sidebar-w:100%;}
+  .sidebar{
+    width:100% !important;opacity:1 !important;pointer-events:auto !important;
+    order:2;border-right:none;border-top:1px solid rgba(0,0,0,.08);
+    max-height:46vh;overflow-y:auto;
+    transition:max-height .28s ease, opacity .2s ease;
+  }
+  .sidebar.collapsed{max-height:0 !important;opacity:0 !important;pointer-events:none !important;border:none;}
+  .sidebar-toggle{
+    position:fixed;bottom:0;left:0;right:0;top:auto;
+    transform:none;width:100%;height:38px;
+    border-radius:10px 10px 0 0;border-bottom:none;border-left:1px solid rgba(0,0,0,.08);
+    z-index:700;order:3;box-shadow:0 -2px 8px rgba(0,0,0,.15);
+    justify-content:center;gap:6px;font-size:13px;
+  }
+  .sidebar.collapsed ~ .sidebar-toggle{left:0;}
+  .map-wrap{height:46vh;order:1;flex:none;}
+  .topbar{padding:10px 14px;}
+  .topbar h1{font-size:16px;}
+  .legend{font-size:10px;padding:8px 11px;bottom:44px;left:8px;}
+  .sidebar-inner{width:100%;}
+}
+
+@media (prefers-reduced-motion:reduce){*{transition:none !important;}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div>
+      <span class="eyebrow">Familien-Logbuch</span>
+      <h1>23 Kreuzfahrten, 2012–2026</h1>
+    </div>
+    <div class="topbar-stats">
+      <span><span id="selectedCount">0</span> von 23 Reisen ausgewählt</span>
+      <button id="clearBtn" class="ghost-btn" type="button">Zurücksetzen</button>
+    </div>
+  </header>
+
+  <div class="main">
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-inner">
+
+        <!-- Personenfilter -->
+        <div class="sidebar-section">
+          <h2>Nach Person filtern</h2>
+          <div class="person-filters" id="personFilters">
+            <button class="person-btn" data-person="monika" type="button">
+              <span class="person-avatar" style="background:#7B68EE">M</span>Monika
+            </button>
+            <button class="person-btn" data-person="stephan" type="button">
+              <span class="person-avatar" style="background:#20B2AA">S</span>Stephan
+            </button>
+            <button class="person-btn" data-person="jule" type="button">
+              <span class="person-avatar" style="background:#FF8C69">J</span>Jule
+            </button>
+            <button class="person-btn" data-person="bennet" type="button">
+              <span class="person-avatar" style="background:#90C143">B</span>Bennet
+            </button>
+          </div>
+        </div>
+
+        <!-- Reisenliste -->
+        <div class="sidebar-section" style="padding-top:0;">
+          <hr class="route-sep">
+          <h2>Alle Reisen</h2>
+          <div id="routeList"></div>
+        </div>
+
+        <!-- Info-Karten -->
+        <div class="sidebar-section info-section">
+          <h2>Ausgewählte Reisen</h2>
+          <div id="infoCards" class="info-cards">
+            <p class="hint">Noch keine Reise ausgewählt.<br>Klicke auf einen Namen, in der Liste oder direkt auf eine Route in der Karte.</p>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- Sidebar-Toggle -->
+    <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Seitenleiste ein-/ausblenden">
+      <span id="toggleIcon">◀</span>
+    </button>
+
+    <main class="map-wrap">
+      <div id="map"></div>
+      <div class="legend">
+        <div class="legend-row">Jede Reise hat eine eigene Farbe</div>
+        <div class="legend-row muted"><span class="dash"></span>&nbsp;inaktiv – anklicken zum Aktivieren</div>
+      </div>
+    </main>
+
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+// DATEN
+// ─────────────────────────────────────────────────────────────
+const CRUISES = [
+  {id:1, name:"Kurzreise 1",                    ship:"AIDA Sol",          line:"aida",       start:"23.04.2012", end:"28.04.2012", code:"F4", etappen:3,  sm:699,  stops:[
+    {date:"23.04.2012", city:"Warnemünde (Einschiffung)",     lat:54.1808, lon:12.0858},
+    {date:"25.04.2012", city:"Oslo",                          lat:59.9139, lon:10.7522},
+    {date:"26.04.2012", city:"Kopenhagen",                    lat:55.6761, lon:12.5683},
+    {date:"28.04.2012", city:"Warnemünde (Ausschiffung)",     lat:54.1808, lon:12.0858}]},
+  {id:2, name:"Nordeuropa 7",                   ship:"AIDA Luna",         line:"aida",       start:"12.04.2014", end:"19.04.2014", code:"F4", etappen:5,  sm:1134, stops:[
+    {date:"12.04.2014", city:"Hamburg (Einschiffung)",        lat:53.5511, lon:9.9937},
+    {date:"14.04.2014", city:"Bergen",                        lat:60.3913, lon:5.3221},
+    {date:"15.04.2014", city:"Eidfjord",                      lat:60.4666, lon:7.0697},
+    {date:"16.04.2014", city:"Stavanger",                     lat:58.9700, lon:5.7331},
+    {date:"17.04.2014", city:"Oslo",                          lat:59.9139, lon:10.7522},
+    {date:"19.04.2014", city:"Hamburg (Ausschiffung)",        lat:53.5511, lon:9.9937}]},
+  {id:3, name:"Adria 3",                        ship:"AIDA Vita",         line:"aida",       start:"28.06.2015", end:"05.07.2015", code:"F4", etappen:5,  sm:1058, stops:[
+    {date:"28.06.2015", city:"Venedig (Einschiffung)",        lat:45.4408, lon:12.3155},
+    {date:"30.06.2015", city:"Korfu",                         lat:39.6243, lon:19.9217},
+    {date:"01.07.2015", city:"Bari",                          lat:41.1171, lon:16.8719},
+    {date:"02.07.2015", city:"Dubrovnik",                     lat:42.6507, lon:18.0944},
+    {date:"03.07.2015", city:"Zadar",                         lat:44.1194, lon:15.2314},
+    {date:"05.07.2015", city:"Venedig (Ausschiffung)",        lat:45.4408, lon:12.3155}]},
+  {id:4, name:"Norwegens Fjorde",               ship:"AIDA Sol",          line:"aida",       start:"12.08.2016", end:"22.08.2016", code:"F4", etappen:9,  sm:1407, stops:[
+    {date:"12.08.2016", city:"Hamburg (Einschiffung)",        lat:53.5511, lon:9.9937},
+    {date:"14.08.2016", city:"Bergen",                        lat:60.3913, lon:5.3221},
+    {date:"15.08.2016", city:"Hellesylt/Geirangerfjord",      lat:62.0833, lon:6.8667},
+    {date:"16.08.2016", city:"Åndalsnes",                     lat:62.5667, lon:7.6833},
+    {date:"17.08.2016", city:"Molde",                         lat:62.7372, lon:7.1607},
+    {date:"18.08.2016", city:"Trondheim",                     lat:63.4305, lon:10.3951},
+    {date:"19.08.2016", city:"Ålesund",                       lat:62.4722, lon:6.1549},
+    {date:"20.08.2016", city:"Eidfjord",                      lat:60.4666, lon:7.0697},
+    {date:"21.08.2016", city:"Stavanger",                     lat:58.9700, lon:5.7331},
+    {date:"22.08.2016", city:"Hamburg (Ausschiffung)",        lat:53.5511, lon:9.9937}]},
+  {id:5, name:"Metropolen ab Hamburg 1",        ship:"AIDA Prima",        line:"aida",       start:"21.10.2017", end:"28.10.2017", code:"F4", etappen:5,  sm:995,  stops:[
+    {date:"21.10.2017", city:"Hamburg (Einschiffung)",        lat:53.5511, lon:9.9937},
+    {date:"23.10.2017", city:"Southampton",                   lat:50.9097, lon:-1.4044},
+    {date:"24.10.2017", city:"Le Havre",                      lat:49.4944, lon:0.1079},
+    {date:"25.10.2017", city:"Zeebrügge",                     lat:51.3300, lon:3.2075},
+    {date:"26.10.2017", city:"Rotterdam",                     lat:51.9244, lon:4.4777},
+    {date:"28.10.2017", city:"Hamburg (Ausschiffung)",        lat:53.5511, lon:9.9937}]},
+  {id:6, name:"Triest bis Valetta",             ship:"Mein Schiff 2 (Herz)", line:"meinschiff", start:"12.08.2018", end:"19.08.2018", code:"F4", etappen:5, sm:740, stops:[
+    {date:"12.08.2018", city:"Triest (Einschiffung)",         lat:45.6495, lon:13.7768},
+    {date:"14.08.2018", city:"Dubrovnik",                     lat:42.6507, lon:18.0944},
+    {date:"15.08.2018", city:"Kotor",                         lat:42.4247, lon:18.7712},
+    {date:"17.08.2018", city:"Bari",                          lat:41.1171, lon:16.8719},
+    {date:"18.08.2018", city:"Catania (Sizilien)",            lat:37.5079, lon:15.0830},
+    {date:"19.08.2018", city:"Valletta (Ausschiffung)",       lat:35.8989, lon:14.5146}]},
+  {id:7, name:"Ostsee ab Kiel 4",              ship:"AIDA Bella",        line:"aida",       start:"14.10.2018", end:"21.10.2018", code:"F4", etappen:5,  sm:1576, stops:[
+    {date:"14.10.2018", city:"Kiel (Einschiffung)",           lat:54.3233, lon:10.1228},
+    {date:"16.10.2018", city:"Tallinn",                       lat:59.4370, lon:24.7536},
+    {date:"17.10.2018", city:"St. Petersburg",                lat:59.9311, lon:30.3609},
+    {date:"19.10.2018", city:"Danzig/Gdynia",                 lat:54.5189, lon:18.5305},
+    {date:"20.10.2018", city:"Kopenhagen",                    lat:55.6761, lon:12.5683},
+    {date:"21.10.2018", city:"Kiel (Ausschiffung)",           lat:54.3233, lon:10.1228}]},
+  {id:8, name:"Von Mallorca nach Hamburg 2",    ship:"AIDA Sol",          line:"aida",       start:"13.04.2019", end:"28.04.2019", code:"F4", etappen:11, sm:2009, stops:[
+    {date:"13.04.2019", city:"Palma de Mallorca (Einschiffung)", lat:39.5696, lon:2.6502},
+    {date:"14.04.2019", city:"Valencia",                      lat:39.4699, lon:-0.3763},
+    {date:"16.04.2019", city:"Málaga",                        lat:36.7213, lon:-4.4214},
+    {date:"17.04.2019", city:"Sevilla/Cádiz",                 lat:36.5297, lon:-6.2923},
+    {date:"18.04.2019", city:"Lissabon (Übernachtliegezeit)", lat:38.7223, lon:-9.1393},
+    {date:"20.04.2019", city:"Porto/Leixões",                 lat:41.1846, lon:-8.7026},
+    {date:"21.04.2019", city:"La Coruña",                     lat:43.3623, lon:-8.4115},
+    {date:"22.04.2019", city:"Santander",                     lat:43.4623, lon:-3.8099},
+    {date:"24.04.2019", city:"Le Havre/Paris",                lat:49.4944, lon:0.1079},
+    {date:"25.04.2019", city:"London/Dover",                  lat:51.1279, lon:1.3134},
+    {date:"26.04.2019", city:"Amsterdam",                     lat:52.3676, lon:4.9041},
+    {date:"28.04.2019", city:"Hamburg (Ausschiffung)",        lat:53.5511, lon:9.9937}]},
+  {id:9, name:"Norwegen und Dänemark 2",        ship:"AIDA Aura",         line:"aida",       start:"11.08.2019", end:"22.08.2019", code:"F4", etappen:9,  sm:1145, stops:[
+    {date:"11.08.2019", city:"Hamburg (Einschiffung)",        lat:53.5511, lon:9.9937},
+    {date:"13.08.2019", city:"Stavanger",                     lat:58.9700, lon:5.7331},
+    {date:"14.08.2019", city:"Rosendal",                      lat:60.1667, lon:6.0000},
+    {date:"15.08.2019", city:"Flåm",                          lat:60.8633, lon:7.1138},
+    {date:"16.08.2019", city:"Oslo",                          lat:59.9139, lon:10.7522},
+    {date:"18.08.2019", city:"Aalborg",                       lat:57.0488, lon:9.9217},
+    {date:"19.08.2019", city:"Fredericia",                    lat:55.5658, lon:9.7517},
+    {date:"20.08.2019", city:"Kopenhagen",                    lat:55.6761, lon:12.5683},
+    {date:"21.08.2019", city:"Bornholm",                      lat:55.0997, lon:14.7039},
+    {date:"22.08.2019", city:"Warnemünde (Ausschiffung)",     lat:54.1808, lon:12.0858}]},
+  {id:10,name:"Inseln der Ostsee 2",            ship:"AIDA Diva",         line:"aida",       start:"16.07.2022", end:"23.07.2022", code:"F4", etappen:5,  sm:963,  stops:[
+    {date:"16.07.2022", city:"Warnemünde (Einschiffung)",     lat:54.1808, lon:12.0858},
+    {date:"18.07.2022", city:"Stockholm",                     lat:59.3293, lon:18.0686},
+    {date:"19.07.2022", city:"Visby (Gotland)",               lat:57.6348, lon:18.2948},
+    {date:"20.07.2022", city:"Gdynia/Gdingen",                lat:54.5189, lon:18.5305},
+    {date:"21.07.2022", city:"Kopenhagen",                    lat:55.6761, lon:12.5683},
+    {date:"23.07.2022", city:"Warnemünde (Ausschiffung)",     lat:54.1808, lon:12.0858}]},
+  {id:11,name:"Schätze des Mittelmeeres",       ship:"AIDA Cosma",        line:"aida",       start:"08.10.2022", end:"15.10.2022", code:"F4", etappen:5,  sm:1113, stops:[
+    {date:"08.10.2022", city:"Palma de Mallorca (Einschiffung)", lat:39.5696, lon:2.6502},
+    {date:"10.10.2022", city:"Florenz/La Spezia",             lat:44.1024, lon:9.8240},
+    {date:"11.10.2022", city:"Rom/Civitavecchia",             lat:42.0942, lon:11.7967},
+    {date:"12.10.2022", city:"Ajaccio",                       lat:41.9192, lon:8.7386},
+    {date:"13.10.2022", city:"Barcelona",                     lat:41.3851, lon:2.1734},
+    {date:"15.10.2022", city:"Palma de Mallorca (Ausschiffung)", lat:39.5696, lon:2.6502}]},
+  {id:12,name:"Kopenhagen, Aarhus",             ship:"Mein Schiff 4",     line:"meinschiff", start:"15.05.2023", end:"20.05.2023", code:"F2", etappen:3,  sm:432,  stops:[
+    {date:"15.05.2023", city:"Kiel (Einschiffung)",           lat:54.3233, lon:10.1228},
+    {date:"17.05.2023", city:"Göteborg",                      lat:57.7089, lon:11.9746},
+    {date:"18.05.2023", city:"Aarhus",                        lat:56.1629, lon:10.2039},
+    {date:"20.05.2023", city:"Kiel (Ausschiffung)",           lat:54.3233, lon:10.1228}]},
+  {id:13,name:"Große Skandinavienreise",        ship:"AIDA Nova",         line:"aida",       start:"08.07.2023", end:"22.07.2023", code:"F4", etappen:10, sm:1863, stops:[
+    {date:"08.07.2023", city:"Kiel (Einschiffung)",           lat:54.3233, lon:10.1228},
+    {date:"10.07.2023", city:"Bergen",                        lat:60.3913, lon:5.3221},
+    {date:"11.07.2023", city:"Nordfjordeid",                  lat:61.9075, lon:6.0036},
+    {date:"12.07.2023", city:"Ålesund",                       lat:62.4722, lon:6.1549},
+    {date:"13.07.2023", city:"Stavanger",                     lat:58.9700, lon:5.7331},
+    {date:"15.07.2023", city:"Kiel (Wechselhafen)",           lat:54.3233, lon:10.1228},
+    {date:"16.07.2023", city:"Oslo",                          lat:59.9139, lon:10.7522},
+    {date:"17.07.2023", city:"Kristiansand",                  lat:58.1467, lon:7.9956},
+    {date:"18.07.2023", city:"Skagen",                        lat:57.7208, lon:10.5840},
+    {date:"19.07.2023", city:"Kopenhagen",                    lat:55.6761, lon:12.5683},
+    {date:"22.07.2023", city:"Kiel (Ausschiffung)",           lat:54.3233, lon:10.1228}]},
+  {id:14,name:"Dubai, Abu Dhabi, Doha",         ship:"Mein Schiff 2",     line:"meinschiff", start:"16.01.2024", end:"20.01.2024", code:"F2", etappen:3,  sm:229,  stops:[
+    {date:"16.01.2024", city:"Dubai (Einschiffung)",          lat:25.2048, lon:55.2708},
+    {date:"17.01.2024", city:"Dubai",                         lat:25.2048, lon:55.2708},
+    {date:"18.01.2024", city:"Abu Dhabi",                     lat:24.4539, lon:54.3773},
+    {date:"20.01.2024", city:"Doha (Ausschiffung)",           lat:25.2854, lon:51.5310}]},
+  {id:15,name:"Metropolenroute",                ship:"AIDA Nova",         line:"aida",       start:"30.03.2024", end:"06.04.2024", code:"F4", etappen:5,  sm:995,  stops:[
+    {date:"30.03.2024", city:"Hamburg (Einschiffung)",        lat:53.5511, lon:9.9937},
+    {date:"01.04.2024", city:"Rotterdam",                     lat:51.9244, lon:4.4777},
+    {date:"02.04.2024", city:"Zeebrügge",                     lat:51.3300, lon:3.2075},
+    {date:"03.04.2024", city:"Le Havre",                      lat:49.4944, lon:0.1079},
+    {date:"04.04.2024", city:"Southampton",                   lat:50.9097, lon:-1.4044},
+    {date:"06.04.2024", city:"Hamburg (Ausschiffung)",        lat:53.5511, lon:9.9937}]},
+  {id:16,name:"Ärmelkanal, Golf von Biskaya",   ship:"AIDA Sol",          line:"aida",       start:"04.08.2024", end:"15.08.2024", code:"F4", etappen:7,  sm:2050, stops:[
+    {date:"04.08.2024", city:"Hamburg (Einschiffung)",        lat:53.5511, lon:9.9937},
+    {date:"06.08.2024", city:"Southampton/Portland",          lat:50.9097, lon:-1.4044},
+    {date:"08.08.2024", city:"Gijón",                         lat:43.5453, lon:-5.6615},
+    {date:"09.08.2024", city:"Bilbao",                        lat:43.2630, lon:-2.9350},
+    {date:"10.08.2024", city:"Bordeaux/Le Verdon",            lat:45.5500, lon:-1.0667},
+    {date:"12.08.2024", city:"Brest",                         lat:48.3904, lon:-4.4861},
+    {date:"13.08.2024", city:"Cherbourg",                     lat:49.6337, lon:-1.6222},
+    {date:"15.08.2024", city:"Hamburg (Ausschiffung)",        lat:53.5511, lon:9.9937}]},
+  {id:17,name:"Schätze des Mittelmeeres",       ship:"AIDA Cosma",        line:"aida",       start:"28.09.2024", end:"05.10.2024", code:"F2", etappen:5,  sm:1113, stops:[
+    {date:"28.09.2024", city:"Palma de Mallorca (Einschiffung)", lat:39.5696, lon:2.6502},
+    {date:"30.09.2024", city:"Florenz/La Spezia",             lat:44.1024, lon:9.8240},
+    {date:"01.10.2024", city:"Rom/Civitavecchia",             lat:42.0942, lon:11.7967},
+    {date:"02.10.2024", city:"Ajaccio",                       lat:41.9192, lon:8.7386},
+    {date:"03.10.2024", city:"Barcelona",                     lat:41.3851, lon:2.1734},
+    {date:"05.10.2024", city:"Palma de Mallorca (Ausschiffung)", lat:39.5696, lon:2.6502}]},
+  {id:18,name:"Gr. Inseln und Zypern",          ship:"Mein Schiff 5",     line:"meinschiff", start:"13.06.2025", end:"21.06.2025", code:"F2", etappen:5,  sm:1286, stops:[
+    {date:"13.06.2025", city:"Heraklion/Kreta (Einschiffung)", lat:35.3387, lon:25.1442},
+    {date:"16.06.2025", city:"Limassol",                      lat:34.7071, lon:33.0226},
+    {date:"18.06.2025", city:"Piräus (Athen)",                lat:37.9475, lon:23.6360},
+    {date:"19.06.2025", city:"Patmos",                        lat:37.3083, lon:26.5450},
+    {date:"20.06.2025", city:"Rhodos",                        lat:36.4341, lon:28.2176},
+    {date:"21.06.2025", city:"Heraklion/Kreta (Ausschiffung)", lat:35.3387, lon:25.1442}]},
+  {id:19,name:"Griech Inseln",                  ship:"AIDA Blu",          line:"aida",       start:"26.07.2025", end:"02.08.2025", code:"F3", etappen:5,  sm:925,  stops:[
+    {date:"26.07.2025", city:"Korfu (Einschiffung)",          lat:39.6243, lon:19.9217},
+    {date:"28.07.2025", city:"Souda-Bucht (Chania, Kreta)",   lat:35.4881, lon:24.1131},
+    {date:"29.07.2025", city:"Kos",                           lat:36.8932, lon:27.2882},
+    {date:"30.07.2025", city:"Kuşadası",                      lat:37.8587, lon:27.2610},
+    {date:"31.07.2025", city:"Athen (Piräus)",                lat:37.9475, lon:23.6360},
+    {date:"02.08.2025", city:"Korfu (Ausschiffung)",          lat:39.6243, lon:19.9217}]},
+  {id:20,name:"Kiel-Kopenhagen-HH",             ship:"Mein Schiff 1",     line:"meinschiff", start:"22.08.2025", end:"25.08.2025", code:"F4", etappen:2,  sm:273,  stops:[
+    {date:"22.08.2025", city:"Kiel (Einschiffung)",           lat:54.3233, lon:10.1228},
+    {date:"23.08.2025", city:"Kopenhagen",                    lat:55.6761, lon:12.5683},
+    {date:"25.08.2025", city:"Hamburg (Ausschiffung)",        lat:53.5511, lon:9.9937}]},
+  {id:21,name:"Norwegen ab Kiel",               ship:"AIDA Nova",         line:"aida",       start:"11.10.2025", end:"18.10.2025", code:"F3", etappen:5,  sm:1045, stops:[
+    {date:"11.10.2025", city:"Kiel (Einschiffung)",           lat:54.3233, lon:10.1228},
+    {date:"13.10.2025", city:"Stavanger",                     lat:58.9700, lon:5.7331},
+    {date:"14.10.2025", city:"Eidfjord",                      lat:60.4666, lon:7.0697},
+    {date:"15.10.2025", city:"Hellesylt/Geiranger",           lat:62.0833, lon:6.8667},
+    {date:"16.10.2025", city:"Ålesund",                       lat:62.4722, lon:6.1549},
+    {date:"18.10.2025", city:"Kiel (Ausschiffung)",           lat:54.3233, lon:10.1228}]},
+  {id:22,name:"Kanarische Inseln",              ship:"AIDA Cosma",        line:"aida",       start:"28.01.2026", end:"04.02.2026", code:"F2", etappen:5,  sm:805,  stops:[
+    {date:"28.01.2026", city:"Gran Canaria (Einschiffung)",   lat:28.1248, lon:-15.4300},
+    {date:"30.01.2026", city:"Teneriffa",                     lat:28.4636, lon:-16.2518},
+    {date:"31.01.2026", city:"Lanzarote",                     lat:28.9630, lon:-13.5477},
+    {date:"01.02.2026", city:"Fuerteventura",                 lat:28.5004, lon:-13.8627},
+    {date:"03.02.2026", city:"Madeira",                       lat:32.6669, lon:-16.9241},
+    {date:"04.02.2026", city:"Gran Canaria (Ausschiffung)",   lat:28.1248, lon:-15.4300}]},
+  {id:23,name:"Norwegen & Lofoten",             ship:"AIDA Bella",        line:"aida",       start:"16.08.2026", end:"30.08.2026", code:"F4", etappen:10, sm:2088, stops:[
+    {date:"16.08.2026", city:"Kiel (Einschiffung)",           lat:54.3233, lon:10.1228},
+    {date:"17.08.2026", city:"Skagen",                        lat:57.7208, lon:10.5840},
+    {date:"19.08.2026", city:"Måløy",                         lat:61.9357, lon:5.1131},
+    {date:"21.08.2026", city:"Sortland",                      lat:68.6966, lon:15.4170},
+    {date:"22.08.2026", city:"Leknes (Lofoten)",              lat:68.1489, lon:13.6094},
+    {date:"23.08.2026", city:"Narvik",                        lat:68.4385, lon:17.4271},
+    {date:"24.08.2026", city:"Bodø",                          lat:67.2804, lon:14.4049},
+    {date:"25.08.2026", city:"Brønnøysund",                   lat:65.4756, lon:12.2138},
+    {date:"26.08.2026", city:"Trondheim",                     lat:63.4305, lon:10.3951},
+    {date:"28.08.2026", city:"Stavanger",                     lat:58.9700, lon:5.7331},
+    {date:"30.08.2026", city:"Kiel (Ausschiffung)",           lat:54.3233, lon:10.1228}]}
+];
+
+// Wer war dabei?
+// F4 = alle 4, F3 = Eltern + Bennet, F2 = nur Eltern
+const PERSON_CODES = {
+  monika:  ['F2','F3','F4'],
+  stephan: ['F2','F3','F4'],
+  bennet:  ['F3','F4'],
+  jule:    ['F4']
+};
+const PERSON_NAMES = {
+  monika:'Monika', stephan:'Stephan', jule:'Jule', bennet:'Bennet'
+};
+const PARTICIPANTS = {
+  F4:"Monika, Stephan, Jule & Bennet",
+  F3:"Monika, Stephan & Bennet",
+  F2:"Monika & Stephan"
+};
+const REEDEREI_LABEL = { aida:"AIDA Cruises", meinschiff:"Mein Schiff (TUI Cruises)" };
+const INACTIVE_COLOR = "#4C6478";
+const reduceMotion = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+// Farbe pro Reise – gleichmäßig über Farbkreis
+CRUISES.forEach((c, i) => {
+  c.color = `hsl(${Math.round(i * 360 / CRUISES.length)}, 68%, 58%)`;
+});
+
+// ─────────────────────────────────────────────────────────────
+// KARTE
+// ─────────────────────────────────────────────────────────────
+const map = L.map('map', { center:[50,15], zoom:3, minZoom:2, maxZoom:10, worldCopyJump:true });
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution:'&copy; OpenStreetMap-Mitwirkende &copy; CARTO', maxZoom:19
+}).addTo(map);
+
+// Bézier-Kurve zwischen zwei Häfen
+function curvePoints(p1, p2, segments, bend) {
+  segments = segments||24; bend = bend===undefined ? 0.15 : bend;
+  const [la1,lo1] = p1, [la2,lo2] = p2;
+  const ml=(la1+la2)/2, mo=(lo1+lo2)/2;
+  const dl=la2-la1, dlo=lo2-lo1;
+  const pl=-dlo, po=dl;
+  const norm=Math.sqrt(pl*pl+po*po)||1;
+  const off=bend*norm;
+  const cl=ml+(pl/norm)*off, co=mo+(po/norm)*off;
+  const pts=[];
+  for(let i=0;i<=segments;i++){
+    const t=i/segments;
+    pts.push([(1-t)*(1-t)*la1+2*(1-t)*t*cl+t*t*la2, (1-t)*(1-t)*lo1+2*(1-t)*t*co+t*t*lo2]);
+  }
+  return pts;
+}
+
+// Layer pro Reise aufbauen
+const routeLayers = {};
+const selected = new Set();
+
+CRUISES.forEach(cruise => {
+  const lineGroup = L.layerGroup().addTo(map);
+  const markerGroup = L.layerGroup();
+  const allPts = [];
+  for(let i=0;i<cruise.stops.length-1;i++){
+    const a=cruise.stops[i], b=cruise.stops[i+1];
+    const pts=curvePoints([a.lat,a.lon],[b.lat,b.lon]);
+    pts.forEach(p=>allPts.push(p));
+    const line=L.polyline(pts,{color:INACTIVE_COLOR,weight:1.6,opacity:0.45});
+    line.on('click',()=>toggleRoute(cruise.id));
+    lineGroup.addLayer(line);
+  }
+  cruise.stops.forEach(s=>{
+    const m=L.circleMarker([s.lat,s.lon],{
+      radius:5, color:cruise.color, weight:1.5, fillColor:'#FFF8E7', fillOpacity:.95, opacity:.95
+    });
+    m.bindTooltip(`<strong>${s.city}</strong><br>${s.date}`,{direction:'top',offset:[0,-6],className:'port-tip'});
+    m.on('click',()=>toggleRoute(cruise.id));
+    markerGroup.addLayer(m);
+  });
+  routeLayers[cruise.id]={lineGroup,markerGroup,bounds:L.latLngBounds(allPts)};
+});
+
+function setActiveStyle(cruise, active) {
+  routeLayers[cruise.id].lineGroup.eachLayer(l=>l.setStyle(active
+    ?{color:cruise.color,weight:3.4,opacity:.92}
+    :{color:INACTIVE_COLOR,weight:1.6,opacity:.45}));
+  if(active) routeLayers[cruise.id].markerGroup.addTo(map);
+  else map.removeLayer(routeLayers[cruise.id].markerGroup);
+}
+
+function toggleRoute(id, forceOn) {
+  const cruise=CRUISES.find(c=>c.id===id);
+  const shouldActivate = forceOn !== undefined ? forceOn : !selected.has(id);
+  if(shouldActivate && !selected.has(id)){
+    selected.add(id);
+    setActiveStyle(cruise,true);
+    if(forceOn===undefined)
+      map.flyToBounds(routeLayers[id].bounds,{padding:[60,60],maxZoom:6,duration:reduceMotion?0:.6});
+  } else if(!shouldActivate && selected.has(id)){
+    selected.delete(id);
+    setActiveStyle(cruise,false);
+  }
+  syncRowState(id);
+  renderInfoCards();
+  updateCount();
+}
+
+function clearAll() {
+  Array.from(selected).forEach(id=>{
+    setActiveStyle(CRUISES.find(c=>c.id===id),false);
+    syncRowState(id);
+  });
+  selected.clear();
+  // Person-Buttons zurücksetzen
+  document.querySelectorAll('.person-btn').forEach(b=>b.classList.remove('active'));
+  activePersons.clear();
+  renderInfoCards();
+  updateCount();
+}
+
+// ─────────────────────────────────────────────────────────────
+// SIDEBAR TOGGLE
+// ─────────────────────────────────────────────────────────────
+const sidebarEl = document.getElementById('sidebar');
+const toggleBtn = document.getElementById('sidebarToggle');
+const toggleIcon = document.getElementById('toggleIcon');
+let sidebarOpen = true;
+const isMobile = ()=>window.innerWidth<=760;
+
+function setSidebar(open) {
+  sidebarOpen = open;
+  sidebarEl.classList.toggle('collapsed', !open);
+  if(isMobile()) {
+    toggleIcon.textContent = open ? '▼  Liste schließen' : '▲  Liste öffnen';
+  } else {
+    toggleIcon.textContent = open ? '◀' : '▶';
+  }
+  setTimeout(()=>map.invalidateSize(),280);
+}
+
+toggleBtn.addEventListener('click',()=>setSidebar(!sidebarOpen));
+
+// ─────────────────────────────────────────────────────────────
+// PERSON-FILTER
+// ─────────────────────────────────────────────────────────────
+const activePersons = new Set();
+
+function getPersonRouteIds(person) {
+  const codes = PERSON_CODES[person];
+  return CRUISES.filter(c=>codes.includes(c.code)).map(c=>c.id);
+}
+
+document.getElementById('personFilters').addEventListener('click', e=>{
+  const btn = e.target.closest('.person-btn');
+  if(!btn) return;
+  const person = btn.dataset.person;
+  const routeIds = getPersonRouteIds(person);
+
+  if(activePersons.has(person)) {
+    // Abwählen: nur die Routen dieser Person deaktivieren, die nicht von anderen aktiven Personen abgedeckt sind
+    activePersons.delete(person);
+    btn.classList.remove('active');
+    routeIds.forEach(id=>{
+      const stillCovered = Array.from(activePersons).some(p=>getPersonRouteIds(p).includes(id));
+      if(!stillCovered) {
+        selected.delete(id);
+        setActiveStyle(CRUISES.find(c=>c.id===id),false);
+        syncRowState(id);
+      }
+    });
+  } else {
+    // Anwählen: alle Routen dieser Person aktivieren
+    activePersons.add(person);
+    btn.classList.add('active');
+    routeIds.forEach(id=>toggleRoute(id,true));
+    // Auf alle Routen dieser Person zoomen
+    const bounds = routeIds.map(id=>routeLayers[id].bounds);
+    if(bounds.length){
+      const combined = bounds.reduce((acc,b)=>acc.extend(b), L.latLngBounds(bounds[0].getSouthWest(),bounds[0].getNorthEast()));
+      map.flyToBounds(combined,{padding:[60,60],maxZoom:5,duration:reduceMotion?0:.8});
+    }
+  }
+  renderInfoCards();
+  updateCount();
+});
+
+// ─────────────────────────────────────────────────────────────
+// REISENLISTE
+// ─────────────────────────────────────────────────────────────
+const routeListEl = document.getElementById('routeList');
+
+function buildRouteList() {
+  const groups=[{key:'aida',label:'AIDA Cruises'},{key:'meinschiff',label:'Mein Schiff (TUI)'}];
+  let html='';
+  groups.forEach(g=>{
+    const items=CRUISES.filter(c=>c.line===g.key);
+    if(!items.length) return;
+    html+=`<div class="route-group-label">${g.label}</div>`;
+    items.forEach(c=>{
+      const year=c.start.split('.')[2];
+      html+=`<label class="route-row" data-id="${c.id}">
+        <input type="checkbox" data-id="${c.id}"/>
+        <span class="route-dot" style="background:${c.color}"></span>
+        <span class="route-text">
+          <span class="name">${c.name}</span>
+          <span class="meta">${c.ship} · ${year}</span>
+        </span></label>`;
+    });
+  });
+  routeListEl.innerHTML=html;
+  routeListEl.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
+    cb.addEventListener('change',()=>toggleRoute(parseInt(cb.dataset.id,10)));
+  });
+}
+
+function syncRowState(id) {
+  const row=routeListEl.querySelector(`.route-row[data-id="${id}"]`);
+  const cb=routeListEl.querySelector(`input[data-id="${id}"]`);
+  if(!row||!cb) return;
+  cb.checked=selected.has(id);
+  row.classList.toggle('active',selected.has(id));
+}
+
+function updateCount() {
+  document.getElementById('selectedCount').textContent=selected.size;
+}
+
+// ─────────────────────────────────────────────────────────────
+// INFO-KARTEN
+// ─────────────────────────────────────────────────────────────
+const infoCardsEl=document.getElementById('infoCards');
+
+function renderInfoCards() {
+  if(!selected.size){
+    infoCardsEl.innerHTML='<p class="hint">Noch keine Reise ausgewählt.<br>Klicke auf einen Namen, in der Liste oder direkt auf eine Route in der Karte.</p>';
+    return;
+  }
+  infoCardsEl.innerHTML=Array.from(selected).sort((a,b)=>a-b).map(id=>{
+    const c=CRUISES.find(cr=>cr.id===id);
+    return `<div class="info-card">
+      <button class="close" type="button" data-id="${c.id}" aria-label="Abwählen">×</button>
+      <h3>${c.name}</h3>
+      <div class="ship-line"><span class="route-dot" style="background:${c.color}"></span>${c.ship} · ${REEDEREI_LABEL[c.line]}</div>
+      <div class="dates">${c.start} – ${c.end}</div>
+      <div class="participants">${PARTICIPANTS[c.code]}</div>
+      <div class="stats"><span><b>${c.etappen}</b> Etappen</span><span><b>${c.sm.toLocaleString('de-DE')}</b> sm</span></div>
+    </div>`;
+  }).join('');
+  infoCardsEl.querySelectorAll('.close').forEach(btn=>{
+    btn.addEventListener('click',()=>toggleRoute(parseInt(btn.dataset.id,10)));
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────
+document.getElementById('clearBtn').addEventListener('click',clearAll);
+buildRouteList();
+renderInfoCards();
+updateCount();
+setSidebar(true);
+
+function fixMapSize(){map.invalidateSize();}
+window.addEventListener('resize',()=>{
+  setSidebar(!isMobile()||sidebarOpen);
+  setTimeout(fixMapSize,50);
+  setTimeout(fixMapSize,300);
+});
+setTimeout(fixMapSize,100);
+setTimeout(fixMapSize,500);
+</script>
+</body>
+</html>
