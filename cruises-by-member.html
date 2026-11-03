@@ -203,10 +203,10 @@ html,body{margin:0;height:100%;font-family:var(--font-body);background:var(--nav
   <header class="topbar">
     <div>
       <span class="eyebrow">Familien-Logbuch</span>
-      <h1>23 Kreuzfahrten, 2012–2026</h1>
+      <h1><span id="totalCruises">24</span> Kreuzfahrten, 2012–2027</h1>
     </div>
     <div class="topbar-stats">
-      <span><span id="selectedCount">0</span> von 23 Reisen ausgewählt</span>
+      <span><span id="selectedCount">0</span> von <span id="totalCount">24</span> Reisen ausgewählt</span>
       <button id="clearBtn" class="ghost-btn" type="button">Zurücksetzen</button>
     </div>
   </header>
@@ -451,7 +451,13 @@ const CRUISES = [
     {date:"25.08.2026", city:"Brønnøysund",                   lat:65.4756, lon:12.2138},
     {date:"26.08.2026", city:"Trondheim",                     lat:63.4305, lon:10.3951},
     {date:"28.08.2026", city:"Stavanger",                     lat:58.9700, lon:5.7331},
-    {date:"30.08.2026", city:"Kiel (Ausschiffung)",           lat:54.3233, lon:10.1228}]}
+    {date:"30.08.2026", city:"Kiel (Ausschiffung)",           lat:54.3233, lon:10.1228}]},
+  {id:24,name:"Islands Naturwunder",            ship:"Mein Schiff 2",     line:"meinschiff", start:"08.08.2027", end:"20.08.2027", code:"F3", etappen:4,  sm:2343, stops:[
+    {date:"08.08.2027", city:"Bremerhaven (Einschiffung)",    lat:53.5396, lon:8.5809},
+    {date:"10.08.2027", city:"Kirkwall (Orkney-Inseln)",      lat:58.9809, lon:-2.9605},
+    {date:"12.–13.08.2027", city:"Akureyri (Übernachtliegezeit)", lat:65.6835, lon:-18.0878},
+    {date:"15.–16.08.2027", city:"Reykjavík (Übernachtliegezeit)", lat:64.1466, lon:-21.9426},
+    {date:"20.08.2027", city:"Bremerhaven (Ausschiffung)",    lat:53.5396, lon:8.5809}]}
 ];
 
 // Wer war dabei?
@@ -477,6 +483,9 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion:reduce)').matche
 // Farbe pro Reise – gleichmäßig über Farbkreis
 CRUISES.forEach((c, i) => {
   c.color = `hsl(${Math.round(i * 360 / CRUISES.length)}, 68%, 58%)`;
+  // Reisen, die noch nicht begonnen haben, gelten als "geplant"
+  const [d, m, y] = c.start.split('.').map(Number);
+  c.planned = new Date(y, m - 1, d) > new Date();
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -599,7 +608,8 @@ const activePersons = new Set();
 
 function getPersonRouteIds(person) {
   const codes = PERSON_CODES[person];
-  return CRUISES.filter(c=>codes.includes(c.code)).map(c=>c.id);
+  // Nur bereits gemachte Reisen – geplante bleiben außen vor
+  return CRUISES.filter(c=>!c.planned && codes.includes(c.code)).map(c=>c.id);
 }
 
 document.getElementById('personFilters').addEventListener('click', e=>{
@@ -655,7 +665,7 @@ function buildRouteList() {
         <span class="route-dot" style="background:${c.color}"></span>
         <span class="route-text">
           <span class="name">${c.name}</span>
-          <span class="meta">${c.ship} · ${year}</span>
+          <span class="meta">${c.ship} · ${year}${c.planned ? ' · geplant' : ''}</span>
         </span></label>`;
     });
   });
@@ -693,7 +703,7 @@ function renderInfoCards() {
       <button class="close" type="button" data-id="${c.id}" aria-label="Abwählen">×</button>
       <h3>${c.name}</h3>
       <div class="ship-line"><span class="route-dot" style="background:${c.color}"></span>${c.ship} · ${REEDEREI_LABEL[c.line]}</div>
-      <div class="dates">${c.start} – ${c.end}</div>
+      <div class="dates">${c.start} – ${c.end}${c.planned ? ' · <b>geplant</b>' : ''}</div>
       <div class="participants">${PARTICIPANTS[c.code]}</div>
       <div class="stats"><span><b>${c.etappen}</b> Etappen</span><span><b>${c.sm.toLocaleString('de-DE')}</b> sm</span></div>
     </div>`;
@@ -710,6 +720,8 @@ document.getElementById('clearBtn').addEventListener('click',clearAll);
 buildRouteList();
 renderInfoCards();
 updateCount();
+document.getElementById('totalCruises').textContent = CRUISES.length;
+document.getElementById('totalCount').textContent = CRUISES.length;
 setSidebar(true);
 
 function fixMapSize(){map.invalidateSize();}
