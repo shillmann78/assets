@@ -156,6 +156,8 @@ html,body{margin:0;height:100%;font-family:var(--font-body);background:var(--nav
   border:none;box-shadow:0 2px 6px rgba(0,0,0,.3);
 }
 .leaflet-tooltip.port-tip:before{border-top-color:var(--ink);}
+/* OSM-Kacheln abdunkeln, damit der Navy-Look passt (nur Kachel-Ebene, Routen bleiben farbig) */
+.osm-dark{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.55);}
 
 /* ── Legend ── */
 .legend{
@@ -492,9 +494,19 @@ CRUISES.forEach((c, i) => {
 // KARTE
 // ─────────────────────────────────────────────────────────────
 const map = L.map('map', { center:[50,15], zoom:3, minZoom:2, maxZoom:10, worldCopyJump:true });
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution:'&copy; OpenStreetMap-Mitwirkende &copy; CARTO', maxZoom:19
-}).addTo(map);
+// Kartenkacheln: CARTO verlangt seit 25.09.2026 einen kostenlosen API-Key für Raster-Kacheln.
+// Key eintragen (https://carto.com/basemaps/apikey/) -> dunkler CARTO-Look.
+// Ohne Key: OpenStreetMap-Kacheln, per CSS abgedunkelt (funktioniert sofort).
+const CARTO_API_KEY = '';
+if (CARTO_API_KEY) {
+  L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=${encodeURIComponent(CARTO_API_KEY)}`, {
+    attribution:'&copy; OpenStreetMap-Mitwirkende &copy; CARTO', maxZoom:19
+  }).addTo(map);
+} else {
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'&copy; OpenStreetMap-Mitwirkende', maxZoom:19, className:'osm-dark'
+  }).addTo(map);
+}
 
 // Bézier-Kurve zwischen zwei Häfen
 function curvePoints(p1, p2, segments, bend) {
